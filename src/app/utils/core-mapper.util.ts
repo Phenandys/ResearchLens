@@ -16,6 +16,21 @@ function cleanText(value: unknown): string | null {
   return collapsed.length > 0 ? collapsed : null;
 }
 
+function cleanAbstract(value: unknown): string | null {
+  const raw = cleanText(value);
+  if (!raw) {
+    return null;
+  }
+  const decoded = raw
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'");
+  const stripped = decoded.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return stripped.length > 0 ? stripped : null;
+}
+
 function isValidHttpUrl(value: string | null): value is string {
   if (!value) {
     return false;
@@ -246,7 +261,7 @@ export function mapCoreWorkToPaper(work: CoreRawWork, index: number): ResearchPa
     authors: extractAuthors(work),
     publicationYear: extractPublicationYear(work),
     publishedDateRaw: cleanText(work.publishedDate),
-    abstract: cleanText(work.abstract),
+    abstract: cleanAbstract(work.abstract),
     doi,
     publisherOrJournal: extractPublisherOrJournal(work),
     paperUrl,

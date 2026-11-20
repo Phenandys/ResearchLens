@@ -1,6 +1,6 @@
-# ResearchLens
+# ResearchLens – Research Paper Discovery Application
 
-**ResearchLens** is a scientific research paper discovery dashboard built with Angular 21, TypeScript, Express, Tailwind CSS, and Chart.js. It integrates directly with the [CORE API v3](https://api.core.ac.uk/docs/v3) to enable Boolean keyword searches, configurable result limits, clean metadata inspection, and publication-year trend visualization.
+**ResearchLens – Research Paper Discovery Application** is a scientific research paper discovery dashboard built with Angular 21, TypeScript, Express, Tailwind CSS, and Chart.js. It integrates directly with the [CORE API v3](https://api.core.ac.uk/docs/v3) to enable Boolean keyword searches, configurable result limits, clean metadata inspection, and publication-year trend visualization.
 
 ---
 
@@ -144,6 +144,16 @@ npm run serve:ssr:app
 ```
 
 By default, the production Node/Express server listens on `PORT` (`4000` if unset).
+
+### Deploying to Vercel
+
+This repository includes `vercel.json` and native Vercel Serverless Functions (`api/core/search.ts` and `api/core/health.ts`) that reuse the shared backend validation and CORE API v3 proxy logic.
+
+1. Push your repository to GitHub and import it in [Vercel](https://vercel.com).
+2. In **Vercel Project Settings → Environment Variables**, add:
+   - `CORE_API_KEY` = your API key from `https://core.ac.uk/services/api` (recommended to avoid shared-IP rate limits).
+3. Deploy (Vercel uses `vercel.json` to run `npm run build`, serve `dist/app/browser`, and deploy `/api/core/search` and `/api/core/health` as Serverless Functions).
+4. Verify `/api/core/health` on your Vercel domain returns `{"status":"ok","provider":"CORE API v3","apiKeyConfigured":true}`.
 
 ---
 

@@ -1,5 +1,5 @@
 {
-  "name": "ResearchLens",
+  "name": "ResearchLens – Research Paper Discovery Application",
   "description": "Scientific research paper discovery dashboard powered by the CORE API v3 with Boolean query search, configurable result limits, and publication-year analytics.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

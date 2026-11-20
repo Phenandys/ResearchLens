@@ -12,7 +12,7 @@ import {MatIconModule} from '@angular/material/icon';
         <a
           href="#search-workspace"
           class="flex shrink-0 items-center gap-2.5 whitespace-nowrap text-slate-900 transition-opacity hover:opacity-85"
-          aria-label="ResearchLens home"
+          aria-label="ResearchLens – Research Paper Discovery Application"
         >
           <svg
             class="h-7 w-7 text-blue-700"

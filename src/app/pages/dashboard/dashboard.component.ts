@@ -67,11 +67,94 @@ interface SearchRequest {
       />
 
       <!-- Responsive 12-column workspace: Results list + Visualization rail -->
-      <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8" [attr.aria-busy]="loading() ? 'true' : 'false'">
+        <!-- Immediate API Fetching Spinner Banner -->
+        @if (loading()) {
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="dashboard-loading-indicator"
+            class="mb-6 flex items-center gap-3.5 rounded-xl border border-blue-200 bg-white px-4 py-3.5 text-sm text-slate-800"
+          >
+            <svg
+              class="h-5 w-5 shrink-0 animate-spin text-blue-700"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <circle
+                class="opacity-20"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="3"
+              />
+              <path
+                class="opacity-90"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"
+              />
+            </svg>
+            <div class="min-w-0 flex-1">
+              <p class="font-medium text-slate-900">
+                Fetching research papers from CORE API…
+              </p>
+              <p class="truncate text-xs text-slate-500">
+                Query:
+                <span class="font-mono text-slate-700">{{ activeQuery() }}</span>
+                <span aria-hidden="true"> · </span>
+                <span class="tabular-nums">Up to {{ activeLimit() }} results</span>
+              </p>
+            </div>
+          </div>
+        }
+
         <div class="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
           <!-- Primary Results Region -->
           <div class="lg:col-span-8" data-testid="results-region">
-            @if (!hasSearched()) {
+            @if (loading()) {
+              <!-- Paper Results Skeleton Screen -->
+              <section
+                id="results-section"
+                data-testid="results-skeleton"
+                aria-hidden="true"
+                class="space-y-4"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div class="space-y-2">
+                    <div class="h-4 w-36 animate-pulse rounded bg-slate-200"></div>
+                    <div class="h-3 w-64 animate-pulse rounded bg-slate-200/80"></div>
+                  </div>
+                  <div class="h-8 w-44 animate-pulse rounded-lg bg-slate-200/80"></div>
+                </div>
+
+                @for (slot of skeletonCards; track slot) {
+                  <div class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div class="flex items-center gap-2">
+                      <div class="h-3 w-12 animate-pulse rounded bg-slate-200"></div>
+                      <div class="h-3 w-36 animate-pulse rounded bg-slate-200/80"></div>
+                      <div class="h-3 w-20 animate-pulse rounded bg-slate-100"></div>
+                    </div>
+                    <div class="mt-3 h-5 w-4/5 animate-pulse rounded bg-slate-200"></div>
+                    <div class="mt-2 h-3.5 w-2/5 animate-pulse rounded bg-slate-200/70"></div>
+                    <div class="mt-4 space-y-2">
+                      <div class="h-3.5 w-full animate-pulse rounded bg-slate-100"></div>
+                      <div class="h-3.5 w-11/12 animate-pulse rounded bg-slate-100"></div>
+                      <div class="h-3.5 w-3/4 animate-pulse rounded bg-slate-100"></div>
+                    </div>
+                    <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3.5">
+                      <div class="h-3 w-44 animate-pulse rounded bg-slate-200/70"></div>
+                      <div class="flex items-center gap-2">
+                        <div class="h-7 w-20 animate-pulse rounded-md bg-slate-100"></div>
+                        <div class="h-7 w-24 animate-pulse rounded-md bg-blue-100/80"></div>
+                      </div>
+                    </div>
+                  </div>
+                }
+              </section>
+            } @else if (!hasSearched()) {
               <!-- Structured Results List Placeholder prior to first search -->
               <section
                 id="results-section"
@@ -164,7 +247,46 @@ interface SearchRequest {
 
           <!-- Secondary Visualization & Syntax Reference Rail -->
           <aside class="space-y-6 lg:sticky lg:top-22 lg:col-span-4" data-testid="visualization-region">
-            @if (!hasSearched()) {
+            @if (loading()) {
+              <!-- Publication-Year Chart Skeleton Screen -->
+              <section
+                id="distribution-section"
+                data-testid="chart-skeleton"
+                aria-hidden="true"
+                class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
+              >
+                <div class="space-y-1.5">
+                  <div class="h-4 w-48 animate-pulse rounded bg-slate-200"></div>
+                  <div class="h-3 w-40 animate-pulse rounded bg-slate-100"></div>
+                </div>
+                <div class="mt-4 grid grid-cols-3 gap-2 border-y border-slate-100 py-3">
+                  <div class="space-y-1.5">
+                    <div class="h-2.5 w-14 animate-pulse rounded bg-slate-100"></div>
+                    <div class="h-4 w-16 animate-pulse rounded bg-slate-200"></div>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="h-2.5 w-14 animate-pulse rounded bg-slate-100"></div>
+                    <div class="h-4 w-12 animate-pulse rounded bg-slate-200"></div>
+                  </div>
+                  <div class="space-y-1.5">
+                    <div class="h-2.5 w-16 animate-pulse rounded bg-slate-100"></div>
+                    <div class="h-4 w-14 animate-pulse rounded bg-slate-200"></div>
+                  </div>
+                </div>
+                <div class="mt-4 flex h-56 items-end justify-between gap-2.5 rounded-lg bg-slate-50/70 px-4 pb-4 pt-8">
+                  <div class="h-14 flex-1 animate-pulse rounded-t bg-slate-200"></div>
+                  <div class="h-24 flex-1 animate-pulse rounded-t bg-slate-200"></div>
+                  <div class="h-36 flex-1 animate-pulse rounded-t bg-blue-200/80"></div>
+                  <div class="h-28 flex-1 animate-pulse rounded-t bg-slate-200"></div>
+                  <div class="h-40 flex-1 animate-pulse rounded-t bg-blue-200/80"></div>
+                  <div class="h-20 flex-1 animate-pulse rounded-t bg-slate-200"></div>
+                </div>
+                <div class="mt-4 space-y-1.5 border-t border-slate-100 pt-3">
+                  <div class="h-3 w-full animate-pulse rounded bg-slate-100"></div>
+                  <div class="h-3 w-4/5 animate-pulse rounded bg-slate-100"></div>
+                </div>
+              </section>
+            } @else if (!hasSearched()) {
               <!-- Structured Publication-Year Visualization Placeholder -->
               <section
                 id="distribution-section"
@@ -226,7 +348,7 @@ interface SearchRequest {
       <footer class="border-t border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl flex-col items-start justify-between gap-2 px-4 py-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:px-6 lg:px-8">
           <p>
-            ResearchLens — Open-access scientific literature discovery powered by the
+            ResearchLens – Research Paper Discovery Application, powered by the
             <a
               href="https://api.core.ac.uk/docs/v3"
               target="_blank"
@@ -252,6 +374,8 @@ export class DashboardComponent implements OnInit {
   readonly searchHistory = inject(SearchHistory);
 
   private readonly searchTrigger$ = new Subject<SearchRequest>();
+
+  readonly skeletonCards = [1, 2, 3, 4];
 
   readonly activeQuery = signal<string>('');
   readonly activeLimit = signal<number>(20);

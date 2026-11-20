@@ -76,21 +76,28 @@ describe('DashboardComponent', () => {
     );
   });
 
-  it('transitions from loading to populated state and supports publication-year sorting', () => {
+  it('shows loading spinner and skeleton screens while fetching, then populates and supports sorting', () => {
     const response$ = new Subject<SearchResultsEnvelope>();
     const {fixture, component} = setup(() => response$.asObservable());
+    const el: HTMLElement = fixture.nativeElement;
 
     component.onSearchSubmit({query: 'drone AND delivery', limit: 20});
     fixture.detectChanges();
 
     expect(component.loading()).toBe(true);
     expect(component.hasSearched()).toBe(true);
+    expect(el.querySelector('[data-testid="dashboard-loading-indicator"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="results-skeleton"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="chart-skeleton"]')).toBeTruthy();
 
     response$.next(sampleEnvelope);
     response$.complete();
     fixture.detectChanges();
 
     expect(component.loading()).toBe(false);
+    expect(el.querySelector('[data-testid="dashboard-loading-indicator"]')).toBeNull();
+    expect(el.querySelector('[data-testid="results-skeleton"]')).toBeNull();
+    expect(el.querySelector('[data-testid="chart-skeleton"]')).toBeNull();
     expect(component.visiblePapers().map((p) => p.id)).toEqual(['1', '2']);
 
     component.onSortChange('year-desc');

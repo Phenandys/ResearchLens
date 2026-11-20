@@ -7,7 +7,7 @@ export const routes: Routes = [
       import('./pages/dashboard/dashboard.component').then(
         (m) => m.DashboardComponent,
       ),
-    title: 'ResearchLens — Scientific Literature Discovery',
+    title: 'ResearchLens – Research Paper Discovery Application',
   },
   {
     path: '**',

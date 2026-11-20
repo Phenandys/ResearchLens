@@ -99,6 +99,8 @@ export class CoreApi {
       case 401:
       case 403:
         return 'Authentication with the CORE API failed. Check CORE_API_KEY configuration on the server.';
+      case 404:
+        return 'The ResearchLens API proxy endpoint (/api/core/search) could not be reached. Ensure the backend server or Vercel Serverless Functions are deployed.';
       case 429:
         return 'CORE API rate limit reached. Wait briefly or configure a CORE_API_KEY in the backend environment.';
       case 504:

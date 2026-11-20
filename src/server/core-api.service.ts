@@ -33,10 +33,49 @@ export interface CoreServiceOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  disableCache?: boolean;
 }
 
 const DEFAULT_BASE_URL = 'https://api.core.ac.uk/v3';
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 25000;
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 500;
+const CACHE_TTL_MS = 120_000;
+const MAX_CACHE_ENTRIES = 50;
+
+interface CacheEntry {
+  expiresAt: number;
+  value: CoreUpstreamResult;
+}
+
+const responseCache = new Map<string, CacheEntry>();
+
+function getCachedResult(key: string): CoreUpstreamResult | null {
+  const entry = responseCache.get(key);
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() > entry.expiresAt) {
+    responseCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCachedResult(key: string, value: CoreUpstreamResult): void {
+  if (responseCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = responseCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      responseCache.delete(oldestKey);
+    }
+  }
+  responseCache.set(key, {
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    value,
+  });
+}
 
 function parseHeaderInt(value: string | null): number | null {
   if (!value) {
@@ -58,9 +97,21 @@ function normalizeBaseUrl(rawUrl: string): string {
   return rawUrl.replace(/\/+$/, '');
 }
 
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
 /**
  * Server-side service that proxies search requests to the official CORE API v3.
- * Preserves the exact Boolean query string and keeps CORE_API_KEY strictly on the server.
+ * Preserves the exact Boolean query string, keeps CORE_API_KEY strictly on the server,
+ * avoids the /works -> /works/ 301 redirect, and automatically retries transient upstream 5xx errors.
  */
 export async function searchCoreWorks(
   params: ValidatedSearchQuery,
@@ -76,8 +127,20 @@ export async function searchCoreWorks(
   );
   const fetchFn = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const useCache = !options.disableCache && !options.fetchImpl;
 
-  const url = new URL(`${baseUrl}/search/works`);
+  const cacheKey = `${Boolean(apiKey)}::${params.q}::${params.limit}::${params.offset}`;
+  if (useCache) {
+    const cached = getCachedResult(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  // Use canonical trailing slash to avoid CORE's HTTP 301 redirect on /v3/search/works
+  const url = new URL(`${baseUrl}/search/works/`);
   url.searchParams.set('q', params.q);
   url.searchParams.set('limit', String(params.limit));
   url.searchParams.set('offset', String(params.offset));
@@ -91,32 +154,60 @@ export async function searchCoreWorks(
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
-  const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response | null = null;
+  let lastNetworkError: CoreUpstreamError | null = null;
 
-  let response: Response;
-  try {
-    response = await fetchFn(url.toString(), {
-      method: 'GET',
-      headers,
-      signal: controller.signal,
-    });
-  } catch (err: unknown) {
-    clearTimeout(timeoutHandle);
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new CoreUpstreamError(
-        'The CORE API request timed out. Please try again or narrow your Boolean query.',
-        504,
-        'UPSTREAM_TIMEOUT',
-      );
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const candidate = await fetchFn(url.toString(), {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutHandle);
+
+      if (isRetryableStatus(candidate.status) && attempt < maxRetries) {
+        await sleep(retryDelayMs * (attempt + 1));
+        continue;
+      }
+
+      response = candidate;
+      lastNetworkError = null;
+      break;
+    } catch (err: unknown) {
+      clearTimeout(timeoutHandle);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      lastNetworkError = isTimeout
+        ? new CoreUpstreamError(
+            'The CORE API request timed out. Please try again or narrow your Boolean query.',
+            504,
+            'UPSTREAM_TIMEOUT',
+          )
+        : new CoreUpstreamError(
+            'Unable to reach the CORE API service. Check network connectivity and try again.',
+            502,
+            'UPSTREAM_NETWORK_ERROR',
+          );
+
+      if (attempt < maxRetries) {
+        await sleep(retryDelayMs * (attempt + 1));
+        continue;
+      }
     }
-    throw new CoreUpstreamError(
-      'Unable to reach the CORE API service. Check network connectivity and try again.',
-      502,
-      'UPSTREAM_NETWORK_ERROR',
+  }
+
+  if (!response) {
+    throw (
+      lastNetworkError ??
+      new CoreUpstreamError(
+        'Unable to reach the CORE API service. Please try again shortly.',
+        502,
+        'UPSTREAM_NETWORK_ERROR',
+      )
     );
-  } finally {
-    clearTimeout(timeoutHandle);
   }
 
   const rateLimit = extractRateLimit(response.headers);
@@ -217,7 +308,7 @@ export async function searchCoreWorks(
       ? parsed.offset
       : params.offset;
 
-  return {
+  const result: CoreUpstreamResult = {
     query: params.q,
     totalHits,
     limit: resolvedLimit,
@@ -226,4 +317,10 @@ export async function searchCoreWorks(
     authenticated: Boolean(apiKey),
     rateLimit,
   };
+
+  if (useCache) {
+    setCachedResult(cacheKey, result);
+  }
+
+  return result;
 }

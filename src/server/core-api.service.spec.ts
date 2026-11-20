@@ -28,11 +28,11 @@ describe('server/core-api.service', () => {
 
     const result = await searchCoreWorks(
       {q: '(drone AND (package OR delivery))', limit: 20, offset: 0},
-      {apiKey: 'secret-test-key', fetchImpl: mockFetch},
+      {apiKey: 'secret-test-key', fetchImpl: mockFetch, retryDelayMs: 0},
     );
 
     const parsedUrl = new URL(capturedUrl);
-    expect(parsedUrl.origin + parsedUrl.pathname).toBe('https://api.core.ac.uk/v3/search/works');
+    expect(parsedUrl.origin + parsedUrl.pathname).toBe('https://api.core.ac.uk/v3/search/works/');
     expect(parsedUrl.searchParams.get('q')).toBe('(drone AND (package OR delivery))');
     expect(parsedUrl.searchParams.get('limit')).toBe('20');
     expect(parsedUrl.searchParams.get('offset')).toBe('0');
@@ -56,16 +56,47 @@ describe('server/core-api.service', () => {
 
     const result = await searchCoreWorks(
       {q: 'drone', limit: 10, offset: 0},
-      {apiKey: 'YOUR_CORE_API_KEY', fetchImpl: mockFetch},
+      {apiKey: 'YOUR_CORE_API_KEY', fetchImpl: mockFetch, retryDelayMs: 0},
     );
 
     expect(capturedHeaders['Authorization']).toBeUndefined();
     expect(result.authenticated).toBe(false);
   });
 
-  it('maps HTTP 429 responses to CoreUpstreamError with rate-limit metadata', async () => {
-    const mockFetch: typeof fetch = async () =>
-      new Response('Too Many Requests', {
+  it('automatically retries transient upstream HTTP 500 responses and succeeds', async () => {
+    let attempts = 0;
+
+    const flakyFetch: typeof fetch = async () => {
+      attempts++;
+      if (attempts === 1) {
+        return new Response('Internal Server Error', {status: 500});
+      }
+      return new Response(
+        JSON.stringify({
+          totalHits: 42,
+          limit: 10,
+          offset: 0,
+          results: [{id: 9, title: 'Recovered Paper', yearPublished: 2024}],
+        }),
+        {status: 200, headers: {'content-type': 'application/json'}},
+      );
+    };
+
+    const result = await searchCoreWorks(
+      {q: 'drone', limit: 10, offset: 0},
+      {apiKey: 'test-key', fetchImpl: flakyFetch, maxRetries: 2, retryDelayMs: 0},
+    );
+
+    expect(attempts).toBe(2);
+    expect(result.totalHits).toBe(42);
+    expect(result.results).toHaveLength(1);
+  });
+
+  it('maps HTTP 429 responses to CoreUpstreamError without retrying', async () => {
+    let attempts = 0;
+    const mockFetch: typeof fetch = async () => {
+      attempts++;
+      return new Response('Too Many Requests', {
         status: 429,
         headers: {
           'x-ratelimit-limit': '10',
@@ -73,9 +104,13 @@ describe('server/core-api.service', () => {
           'x-ratelimit-retry-after': '2026-11-20T12:46:53+0000',
         },
       });
+    };
 
     await expect(
-      searchCoreWorks({q: 'drone', limit: 10, offset: 0}, {apiKey: '', fetchImpl: mockFetch}),
+      searchCoreWorks(
+        {q: 'drone', limit: 10, offset: 0},
+        {apiKey: '', fetchImpl: mockFetch, retryDelayMs: 0},
+      ),
     ).rejects.toMatchObject({
       name: 'CoreUpstreamError',
       statusCode: 429,
@@ -86,20 +121,27 @@ describe('server/core-api.service', () => {
         retryAfter: '2026-11-20T12:46:53+0000',
       },
     });
+    expect(attempts).toBe(1);
   });
 
-  it('maps network errors to 502 UPSTREAM_NETWORK_ERROR', async () => {
+  it('maps persistent network errors to 502 UPSTREAM_NETWORK_ERROR after retries', async () => {
+    let attempts = 0;
     const failingFetch: typeof fetch = async () => {
+      attempts++;
       throw new TypeError('fetch failed');
     };
 
     let caught: unknown;
     try {
-      await searchCoreWorks({q: 'drone', limit: 10, offset: 0}, {fetchImpl: failingFetch});
+      await searchCoreWorks(
+        {q: 'drone', limit: 10, offset: 0},
+        {fetchImpl: failingFetch, maxRetries: 1, retryDelayMs: 0},
+      );
     } catch (err) {
       caught = err;
     }
 
+    expect(attempts).toBe(2);
     expect(caught).toBeInstanceOf(CoreUpstreamError);
     expect((caught as CoreUpstreamError).statusCode).toBe(502);
     expect((caught as CoreUpstreamError).code).toBe('UPSTREAM_NETWORK_ERROR');
