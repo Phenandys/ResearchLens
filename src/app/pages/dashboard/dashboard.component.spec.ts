@@ -138,4 +138,30 @@ describe('DashboardComponent', () => {
     expect(component.activeQuery()).toBe('');
     expect(fixture.nativeElement.textContent).toContain('Research Results Workspace');
   });
+
+  it('opens the paper detail side panel when clicking a result item and closes cleanly', () => {
+    const {fixture, component} = setup(() => of(sampleEnvelope));
+    const el: HTMLElement = fixture.nativeElement;
+
+    component.onSearchSubmit({query: 'drone AND delivery', limit: 20});
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="paper-detail-panel"]')).toBeNull();
+
+    const firstCard = el.querySelector('[data-testid="paper-card"]') as HTMLElement;
+    firstCard.click();
+    fixture.detectChanges();
+
+    const panel = el.querySelector('[data-testid="paper-detail-panel"]');
+    expect(panel).toBeTruthy();
+    expect(panel?.textContent).toContain('Older UAV Paper');
+    expect(panel?.textContent).toContain('Study from 2020.');
+    expect(panel?.textContent).toContain('10.1000/old');
+
+    const closeBtn = el.querySelector('[data-testid="close-detail-panel"]') as HTMLButtonElement;
+    closeBtn.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="paper-detail-panel"]')).toBeNull();
+  });
 });

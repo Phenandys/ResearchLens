@@ -222,7 +222,11 @@ import {PaperCard} from '../paper-card/paper-card';
         <!-- Paper Cards Stack -->
         <div class="space-y-4">
           @for (paper of papers(); track paper.id) {
-            <app-paper-card [paper]="paper" />
+            <app-paper-card
+              [paper]="paper"
+              [selected]="selectedPaperId() === paper.id"
+              (selectPaper)="selectPaper.emit($event)"
+            />
           }
         </div>
 
@@ -274,11 +278,13 @@ export class ResultsList {
   readonly error = input<CoreSearchError | null>(null);
   readonly sortBy = input<SortOption>('relevance');
   readonly selectedYear = input<number | null>(null);
+  readonly selectedPaperId = input<string | null>(null);
 
   readonly sortChange = output<SortOption>();
   readonly pageChange = output<number>();
   readonly retrySearch = output<void>();
   readonly clearYearFilter = output<void>();
+  readonly selectPaper = output<ResearchPaper>();
 
   readonly skeletonSlots = [1, 2, 3, 4];
 

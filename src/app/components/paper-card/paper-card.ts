@@ -3,21 +3,32 @@ import {
   Component,
   computed,
   input,
+  output,
   signal,
 } from '@angular/core';
 import {MatIconModule} from '@angular/material/icon';
 import {ResearchPaper} from '../../models/paper.model';
 
-const ABSTRACT_PREVIEW_CHARS = 320;
+const ABSTRACT_PREVIEW_CHARS = 280;
 const MAX_VISIBLE_AUTHORS = 5;
 
 @Component({
   selector: 'app-paper-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MatIconModule],
+  host: {
+    class: 'block',
+    '(click)': 'onHostClick($event)',
+  },
   template: `
     <article
-      class="rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 sm:p-6"
+      data-testid="paper-card"
+      class="cursor-pointer rounded-xl border bg-white p-5 transition-colors sm:p-6"
+      [class.border-blue-600]="selected()"
+      [class.ring-1]="selected()"
+      [class.ring-blue-600/20]="selected()"
+      [class.border-slate-200]="!selected()"
+      [class.hover:border-slate-300]="!selected()"
     >
       <!-- Unboxed typographic metadata header (zero-pill discipline) -->
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
@@ -37,20 +48,15 @@ const MAX_VISIBLE_AUTHORS = 5;
         }
       </div>
 
-      <!-- Paper Title -->
+      <!-- Paper Title (semantic button opens full detail side panel) -->
       <h3 class="mt-2 text-base font-semibold leading-snug text-slate-950 sm:text-lg">
-        @if (paper().paperUrl) {
-          <a
-            [href]="paper().paperUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="transition-colors hover:text-blue-700 hover:underline hover:underline-offset-2"
-          >
-            {{ paper().title }}
-          </a>
-        } @else {
-          <span>{{ paper().title }}</span>
-        }
+        <button
+          type="button"
+          (click)="selectPaper.emit(paper())"
+          class="text-left transition-colors hover:text-blue-700 hover:underline hover:underline-offset-2"
+        >
+          {{ paper().title }}
+        </button>
       </h3>
 
       <!-- Authors -->
@@ -71,19 +77,10 @@ const MAX_VISIBLE_AUTHORS = 5;
         }
       </p>
 
-      <!-- Abstract -->
+      <!-- Abstract Preview -->
       <div class="mt-3 text-sm leading-relaxed text-slate-700">
         @if (paper().abstract) {
-          <p>{{ displayedAbstract() }}</p>
-          @if (isAbstractTruncatable()) {
-            <button
-              type="button"
-              (click)="toggleAbstract()"
-              class="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
-            >
-              <span>{{ abstractExpanded() ? 'Show less' : 'Read full abstract' }}</span>
-            </button>
-          }
+          <p>{{ previewAbstract() }}</p>
         } @else {
           <p class="italic text-slate-400">Abstract not provided by the indexing source.</p>
         }
@@ -103,6 +100,18 @@ const MAX_VISIBLE_AUTHORS = 5;
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            (click)="selectPaper.emit(paper())"
+            data-testid="view-paper-details"
+            class="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-800 transition-colors hover:border-blue-300 hover:bg-blue-50/70 hover:text-blue-800"
+          >
+            <mat-icon class="!h-3.5 !w-3.5 !text-[15px]" aria-hidden="true">
+              subject
+            </mat-icon>
+            <span>View Details</span>
+          </button>
+
           @if (paper().doi) {
             <button
               type="button"
@@ -118,18 +127,6 @@ const MAX_VISIBLE_AUTHORS = 5;
           }
 
           @if (paper().paperUrl) {
-            <button
-              type="button"
-              (click)="copyText(paper().paperUrl!, 'url')"
-              class="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
-              aria-label="Copy paper URL"
-            >
-              <mat-icon class="!h-3.5 !w-3.5 !text-[15px]" aria-hidden="true">
-                {{ copiedField() === 'url' ? 'check' : 'link' }}
-              </mat-icon>
-              <span>{{ copiedField() === 'url' ? 'URL copied' : 'Copy URL' }}</span>
-            </button>
-
             <a
               [href]="paper().paperUrl"
               target="_blank"
@@ -149,24 +146,20 @@ const MAX_VISIBLE_AUTHORS = 5;
 })
 export class PaperCard {
   readonly paper = input.required<ResearchPaper>();
+  readonly selected = input<boolean>(false);
+  readonly selectPaper = output<ResearchPaper>();
 
-  readonly abstractExpanded = signal<boolean>(false);
   readonly authorsExpanded = signal<boolean>(false);
   readonly copiedField = signal<'doi' | 'url' | null>(null);
 
   private copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
-  readonly isAbstractTruncatable = computed(() => {
-    const abs = this.paper().abstract;
-    return Boolean(abs && abs.length > ABSTRACT_PREVIEW_CHARS);
-  });
-
-  readonly displayedAbstract = computed(() => {
+  readonly previewAbstract = computed(() => {
     const abs = this.paper().abstract;
     if (!abs) {
       return '';
     }
-    if (this.abstractExpanded() || abs.length <= ABSTRACT_PREVIEW_CHARS) {
+    if (abs.length <= ABSTRACT_PREVIEW_CHARS) {
       return abs;
     }
     return `${abs.slice(0, ABSTRACT_PREVIEW_CHARS).trimEnd()}...`;
@@ -184,8 +177,12 @@ export class PaperCard {
     return Math.max(0, this.paper().authors.length - MAX_VISIBLE_AUTHORS);
   });
 
-  toggleAbstract(): void {
-    this.abstractExpanded.update((expanded) => !expanded);
+  onHostClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('a, button')) {
+      return;
+    }
+    this.selectPaper.emit(this.paper());
   }
 
   async copyText(value: string, field: 'doi' | 'url'): Promise<void> {

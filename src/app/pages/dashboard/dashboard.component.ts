@@ -13,6 +13,7 @@ import {MatIconModule} from '@angular/material/icon';
 import {catchError, EMPTY, Subject, switchMap, tap} from 'rxjs';
 import {BooleanGuide} from '../../components/boolean-guide/boolean-guide';
 import {Navbar} from '../../components/navbar/navbar';
+import {PaperDetailPanel} from '../../components/paper-detail-panel/paper-detail-panel';
 import {PublicationChart} from '../../components/publication-chart/publication-chart';
 import {ResultsList} from '../../components/results-list/results-list';
 import {
@@ -20,6 +21,7 @@ import {
   SearchSubmitEvent,
 } from '../../components/search-bar/search-bar';
 import {
+  ResearchPaper,
   RESULT_LIMIT_OPTIONS,
   SearchResultsEnvelope,
   SortOption,
@@ -47,6 +49,7 @@ interface SearchRequest {
     ResultsList,
     PublicationChart,
     BooleanGuide,
+    PaperDetailPanel,
   ],
   template: `
     <div class="flex min-h-screen flex-col bg-slate-50 text-slate-900">
@@ -237,10 +240,12 @@ interface SearchRequest {
                 [error]="error()"
                 [sortBy]="sortBy()"
                 [selectedYear]="selectedYear()"
+                [selectedPaperId]="selectedPaper()?.id ?? null"
                 (sortChange)="onSortChange($event)"
                 (pageChange)="onPageChange($event)"
                 (retrySearch)="onRetrySearch()"
                 (clearYearFilter)="onSelectYear(null)"
+                (selectPaper)="onSelectPaper($event)"
               />
             }
           </div>
@@ -345,6 +350,11 @@ interface SearchRequest {
         </div>
       </main>
 
+      <app-paper-detail-panel
+        [paper]="selectedPaper()"
+        (closed)="onClosePaperDetail()"
+      />
+
       <footer class="border-t border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl flex-col items-start justify-between gap-2 px-4 py-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:px-6 lg:px-8">
           <p>
@@ -386,6 +396,7 @@ export class DashboardComponent implements OnInit {
   readonly resultsEnvelope = signal<SearchResultsEnvelope | null>(null);
   readonly sortBy = signal<SortOption>('relevance');
   readonly selectedYear = signal<number | null>(null);
+  readonly selectedPaper = signal<ResearchPaper | null>(null);
 
   readonly retrievedPapers = computed(() => this.resultsEnvelope()?.papers ?? []);
   readonly totalHits = computed(() => this.resultsEnvelope()?.totalHits ?? 0);
@@ -436,6 +447,7 @@ export class DashboardComponent implements OnInit {
           this.loading.set(true);
           this.error.set(null);
           this.selectedYear.set(null);
+          this.selectedPaper.set(null);
           this.hasSearched.set(true);
 
           if (req.updateUrl) {
@@ -557,6 +569,7 @@ export class DashboardComponent implements OnInit {
     this.error.set(null);
     this.resultsEnvelope.set(null);
     this.selectedYear.set(null);
+    this.selectedPaper.set(null);
     this.sortBy.set('relevance');
 
     void this.router.navigate([], {
@@ -573,6 +586,14 @@ export class DashboardComponent implements OnInit {
 
   onSelectYear(year: number | null): void {
     this.selectedYear.set(year);
+  }
+
+  onSelectPaper(paper: ResearchPaper): void {
+    this.selectedPaper.set(paper);
+  }
+
+  onClosePaperDetail(): void {
+    this.selectedPaper.set(null);
   }
 
   onExportCsv(): void {
